@@ -9,6 +9,6 @@ We model separately the impacts of soil greenhouse gas (GHG) balance, tree stand
 
 Average RF's at given timeframe are compared, and the cost of climate mitigation compared to economic gains/losses. Thinking how to use CO2 and CH4 costs of emission trading to value sinks/sources
 
-# References
+### References
 Launiainen S., Ahtikoski A., Rinne J., Ojanen P., Hökkä H. 2025. Rewetting drained boreal peatland forests does not mitigate climate warming in the 21st century. Ambio (accepted 30.06.2025). Pre-print available at: https://eartharxiv.org/repository/view/8520/
 
