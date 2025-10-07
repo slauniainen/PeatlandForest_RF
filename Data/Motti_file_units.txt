@@ -1,0 +1,17 @@
+v_units = {'simulointi': '-', 'vuosi': '-',	'Ika': 'a', 'N': 'ha-1',
+	'keskiTilavuus': '?', 'PPA': 'm2ha-1',	
+	'Hg': 'm', 'Dg': 'cm', 'Ha': 'm', 'Da': 'm',
+	'hdom': 'm', 'tilavuus': 'm3ha-1',	'puustonArvo': '€',	
+	'tukki': 'm3ha-1', 'kuitu': 'm3ha-1', 'hukka': 'm3ha-1',
+	'runko aines': '?', 'runko hukka': , 'elävät oksat': , 'kuolleet oksat': , 	'lehdet': ,	'kannot': ,	
+	'juuret_karkea': , 'juuret_hieno': , 'biom_yht': ,	'hiilivarasto':	,
+	'Mustikkasato': ,	'Puolukkasato': ,	'Mustikkapeitto': , 'Puolukkapeitto': , 
+	'Kuolleisuus':	, 'Tuotos': , 'KuollutBiomassa': , 'TuotosHiilenä':	,
+	'N_ma': 'ha-1',	'PPA_ma': 'm2ha-1', 'Hg_ma': 'm', 'Dg_ma': 'cm', 'HDom_ma': 'm', 'tilavuus_ma': 'm3ha-1', 'tukki_ma': 'm3ha-1',	'kuitu_ma': 'm3ha-1',	
+	'N_ku': 'ha-1',	'PPA_ku': 'm2ha-1', 'Hg_ku': 'm', 'Dg_ku': 'cm', 'HDom_ku':	'm', 'tilavuus_ku':	'm3ha-1', 'tukki_ku': 'm3ha-1', 'kuitu_ku': 'm3ha-1',
+	'N_ra': 'ha-1',	'PPA_ra': 'm2ha-1', 'Hg_ra': 'm', 'Dg_ra': 'cm', 'HDom_ra':	'm', 'tilavuus_ra':	'm3ha-1', 'tukki_ra': 'm3ha-1', 'kuitu_ra': 'm3ha-1',
+	'N_hi': 'ha-1',	'PPA_hi': 'm2ha-1', 'Hg_hi': 'm', 'Dg_hi': 'cm', 'HDom_hi':	'm', 'tilavuus_hi':	'm3ha-1', 'tukki_hi': 'm3ha-1', 'kuitu_hi': 'm3ha-1',
+	'laho_tilavuus': 'm3ha-1', 'laho_kantomassa':	, 'laho_juurimassa': , 'laho_oksamassa': , 'laho_runkomassa': ,	
+	'laho_massa_yht': , 'laho_hiili_yht': ,	'puusto_hiili_yht', :, 
+	'diversiteetti': '-'
+	}
