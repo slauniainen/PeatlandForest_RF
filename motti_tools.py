@@ -276,24 +276,31 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
     #raw = pd.read_csv(ffile, sep=',')
     ix = np.where(np.isfinite(raw['year']))[0]
     raw = raw.iloc[ix]
-
+    
 
     # remove duplicate rows
     raw.drop_duplicates(inplace=True)
     raw.index = raw['year']
+    
+    # in beginning of simulations all root biomass is located in variable 'bioRootsC12'. Correct this using average fine to total root biomass from LukeMotti runs for similar sites
+    f = 0.05
+    rb = raw['bioRootsC12'].values
+    raw['bioRootsC12'] = (1 - f) * rb
+    raw['bioRootsF12'] = f * rb
 
     # in years when stand has been harvested, there are values pre- and post-harvest. Add +1 to post-harvest year
     for k in range(1, len(raw)):
         if raw['year'].iloc[k] == raw['year'].iloc[k-1]:
             raw['year'].iloc[k] += 1
             raw['DomAge'].iloc[k] += 1
-
+    
+    raw.index = raw['year']
     # save initial state of the stand
     initial_state = raw.iloc[0].copy()
 
     # start from 2nd row
     # raw = raw.iloc[1:]
-
+    #print(raw[['year', 'vol', 'BA']].head(3))
 
     # combine biomasses from vallitsevat jaksot, siemenpuut etc. into one, and convert ton DM ha-1 to g C m-2
     components = ['bioTot', 'bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']
@@ -325,18 +332,14 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
         del vol, bm
 
     raw = raw[usecols]
-
+    
     # interpolate linearly to annual values
     tmp = np.arange(0, max(raw['year']+1), 1)
     
     # annual motti-file
     dat = interp_to_denser_index(raw, tmp)
     dat['DomAge'] = np.floor(dat['DomAge'].values)
-    
-    #print(dat.head())
-    #dat = dat
-    #dat.iloc[0] = initial_state[usecols]
-    
+
     # --- calculate harvest removals ---
     dat = dat.reindex(columns=dat.columns.tolist() + ['harvest_vol', 'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC',
                                                       'harvest_bioBranches', 'harvest_bioStumps', 'harvest_bioTot', 

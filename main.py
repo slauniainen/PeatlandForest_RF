@@ -37,7 +37,7 @@ class wood_pools():
 
 # --- Drained forest peatland soil CO2 balance as function of WT
 
-def soilCO2(x, ftype):
+def soilCO2(x, ftype, wtd_para={'a': -50.6, 'b': 29.36, 'c': 0.98698}):
     """
     Soil CO2 balance (g CO2 m-2 a-1) from stem volume (x)
     Based on combining WTD-Vol response from Sarkkola et al. 2010 Fig.4
@@ -49,7 +49,11 @@ def soilCO2(x, ftype):
         f - soil C balance (g C m-2)
     """
     # WTD as function of Vol
-    a = -50.56; b = 29.356; c = 0.98698
+    #a = -50.56; b = 29.356; c = 0.98698
+    a = wtd_para['a']
+    b = wtd_para['b']
+    c = wtd_para['c']
+
     wtd = a + b * np.power(c, x)
     
     if ftype == 'FNR':
@@ -64,7 +68,7 @@ def soilCO2(x, ftype):
 
 # --- compute C stocks and net CO2, CH4 and N2O fluxes to atmosphere
 
-def compute_stocks_fluxes(dat, ftype=None, fyear=2025):
+def compute_stocks_fluxes(dat, ftype=None, wtd_para={'a': -50.6, 'b': 29.36, 'c': 0.98698}, fyear=2025):
 
     # soil net GHG balances (Laine et al. 2024 Table 1). Unit = g gas m-2 a-1
     Fsoil = {'FNR': {'CO2': 265.0, 'CH4': 0.34, 'N2O': 0.23}, # forest, nutrient rich
@@ -110,7 +114,7 @@ def compute_stocks_fluxes(dat, ftype=None, fyear=2025):
         # ----- Soil CO2, CH4 and N2O emissions
         vol = res['Vol'].values
         #F_soil = soilCO2(x=vol, ftype=ftype)
-        res['F_soil'] = soilCO2(x=vol, ftype=ftype)
+        res['F_soil'] = soilCO2(x=vol, ftype=ftype, wtd_para=wtd_para)
         res['C_soil'] = -np.cumsum(res['F_soil'].values) # change in soil C storage
         
         res['F_CH4'] = Fsoil[ftype]['CH4']

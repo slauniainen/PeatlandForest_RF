@@ -1,0 +1,17 @@
+From:	Ahtikoski Anssi (LUKE)
+Sent:	Wednesday, October 8, 2025 2:25 PM
+To:	Launiainen Samuli (LUKE)
+Subject:	Reilut 10 parasta optimointitulosta_Asmonkorpi Mtkg rotation forestry 2%
+Attachments:	Development.csv
+
+Moro,
+
+Sanoista tekoihin - liitteessä viime kuussa ajamani Motti-optimoinnit: Asmonkorpi (Oulu) - 
+rotation forestry (RF) - 2% interest rate.
+
+Alinpana listauksessa (simulation 819) on paras tavoitefunktion (NPV according to 2% interest 
+rate) mukainen tulos.  Todettakoon vielä, että liitetiedoston optimiratkaisujen (simulation 
+1,...simulation 819) tavoitefunktion vaihteluväli oli noin 5%. Toisin sanoen, huonoin optimi oli 
+ainoastaan n 5% huonompi kuin parhain. Ei paha ??
+
+T: Anssi 
