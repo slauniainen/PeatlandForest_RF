@@ -76,7 +76,7 @@ def read_csv_until_column_change(filepath, delimiter=";"):
         ))
 
     # Load into DataFrame
-    dat = pd.read_csv(StringIO(''.join(valid_lines)), delimiter=delimiter)
+    dat = pd.read_csv(StringIO(''.join(valid_lines)), delimiter=delimiter,  encoding='unicode_escape')
     #print(dat.head())
     #print(dat.tail())
 

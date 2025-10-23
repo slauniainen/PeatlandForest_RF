@@ -5,6 +5,7 @@ Structure of RF results (.xlsx) based on Motti-simulations and RF-calculations
 sheets:
 
 FNR - forestry on nutrient rich site
+FNR_higWT - forestry with reduced drainage (max WT -30cm in dense stand)
 Rest_RME - restoration to open mesotrophic fen, clear-cutting at t=0 creates wood products and residues that gradually decompose
 Rest_ROL - restoration to open oligotrophic fen, clear-cutting at t=0 creates wood products and residues that gradually decompose
 Rest_RSM - restoration to tree-covered mire, no clear-cutting, tree C storate assumed constant in time
