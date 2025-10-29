@@ -199,8 +199,8 @@ def compute_stocks_fluxes(dat, ftype=None, wtd_para={'a': -50.6, 'b': 29.36, 'c'
         Flong0 = alpha_saw * dat['harvest_Log'].values
         Fshort0 = (1 - alpha_saw) * dat['harvest_Log'].values + dat['harvest_Fibre'].values
         
-        Flong0[1:] = 0.0
-        Fshort0[1:] = 0.0
+        Flong0[2:] = 0.0
+        Fshort0[2:] = 0.0
 
         Sl = np.zeros(N)
         Ss = np.zeros(N)

@@ -95,6 +95,12 @@ def massage_LukeMotti(ffile, CCF=False, timespan=300):
     # remove duplicate rows
     raw.drop_duplicates(inplace=True)
 
+    # --- correction to make all simulations harmonized (mistake in OptiMotti CCF simulations; commercial stem biomass is wrong)
+    aa = 0.38 # average ratio of runko aines / (tukki + kuitu vol)
+    x = raw['tukki'].values + raw['kuitu'].values
+    raw['runko aines'] = aa * x
+    raw['biom_yht'] = raw[['runko aines', 'runko hukka', 'elävät oksat', 'kuolleet oksat', 'lehdet', 'kannot', 'juuret_karkea', 'juuret_hieno']].sum(axis=1)
+
     # convert biomasses ton ha-1 --> g C m-2
     for c in ['runko aines', 'runko hukka', 'elävät oksat', 'kuolleet oksat', 'lehdet', 'kannot', 'juuret_karkea', 'juuret_hieno', 'biom_yht']:
         raw[c] = raw[c] * cf
@@ -147,9 +153,9 @@ def massage_LukeMotti(ffile, CCF=False, timespan=300):
     dat = interp_to_denser_index(raw, tmp)
     dat['Ika'] = np.floor(dat['Ika'].values)
     dat = dat[usecols]
-
-    #dat.iloc[0] = initial_state[usecols]
     
+    #dat.iloc[0] = initial_state[usecols]
+
     # --- calculate harvest removals ---
     dat = dat.reindex(columns=dat.columns.tolist() + ['poistuma_vol', 'poistuma_runko aines', 'poistuma_runko hukka', 
                                                     'poistuma_elävät oksat', 'poistuma_kuolleet oksat', 
@@ -164,16 +170,20 @@ def massage_LukeMotti(ffile, CCF=False, timespan=300):
     for k in range(1, len(dat)):
         dV = dat['tilavuus'].iloc[k] - dat['tilavuus'].iloc[k-1]
         if dV < 0:
-            dat['poistuma_vol'].iloc[k-1] = -dV
+            # oli k-1
+            dat['poistuma_vol'].iloc[k] = -dV
             for c in ['runko aines', 'runko hukka', 'elävät oksat', 'kuolleet oksat', 'lehdet', 'kannot', 'juuret_karkea', 'juuret_hieno', 'biom_yht']:
                 dX = dat[c].iloc[k] - dat[c].iloc[k-1]
-                dat['poistuma_' + c].iloc[k-1] = -dX
+                dat['poistuma_' + c].iloc[k] = -dX
 
             # divide poistuma_runko aines between tukki and kuitu based on tukki & kuitu volume's
             sf = dat['tukki'].iloc[k-1] / (dat['tukki'].iloc[k-1] + dat['kuitu'].iloc[k-1] + EPS)
-            dat['poistuma_tukki'] = dat['poistuma_runko aines'] * sf
-            dat['poistuma_kuitu'] = dat['poistuma_runko aines'] * (1 - sf)
 
+            dat['poistuma_tukki'].iloc[k] = dat['poistuma_runko aines'].iloc[k] * sf
+            dat['poistuma_kuitu'].iloc[k] = dat['poistuma_runko aines'].iloc[k] * (1 - sf)
+    
+    dat['biom_yht'] = dat[['runko aines', 'runko hukka', 'elävät oksat', 'kuolleet oksat', 'lehdet', 'kannot', 'juuret_karkea', 'juuret_hieno']].sum(axis=1)
+    
     # biomass growth (NPP, g C m-2 a-1)
     dat['NPP'] = 0.0
     for k in range(1, len(dat)):
@@ -201,6 +211,7 @@ def massage_LukeMotti(ffile, CCF=False, timespan=300):
         dat['CWD'].iloc[ix] = 0.0 
 
     data = dat.copy()
+    data = data.iloc[0:-1]
 
     if CCF == False:
         # -- rotation length---
@@ -288,6 +299,17 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
     raw['bioRootsC12'] = (1 - f) * rb
     raw['bioRootsF12'] = f * rb
 
+    # ----------------------------------------------------
+    #  correction to make all simulations harmonized (mistake in OptiMotti CCF simulations; commercial stem biomass is wrong)
+    # NOTE - DOES NOT WORK IF BIOMASS ALSO IN OTHER 'JAKSOT' THAN 1 & 2
+
+    aa = 0.38 # average ratio of runko aines / (tukki + kuitu vol)
+    x = raw['sawVol'].values + raw['pulpVol'].values
+    raw['bioStemComm12'] = aa * x
+    raw['bioTot12'] = raw[['bioStemComm12', 'bioStemWaste12', 'bioBranchesL12', 'bioBranchesD12', 'bioFoliage12', 'bioStumps12', 'bioRootsC12', 'bioRootsF12']].sum(axis=1)
+    
+    # ---------------------------------------------------
+
     # in years when stand has been harvested, there are values pre- and post-harvest. Add +1 to post-harvest year
     for k in range(1, len(raw)):
         if raw['year'].iloc[k] == raw['year'].iloc[k-1]:
@@ -353,16 +375,18 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
     for k in range(1, len(dat)):
         dV = dat['vol'].iloc[k] - dat['vol'].iloc[k-1]
         if dV < 0:
-            dat['harvest_vol'].iloc[k-1] = -dV
+            dat['harvest_vol'].iloc[k] = -dV
             for c in ['bioTot', 'bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']:
                 dX = dat[c].iloc[k] - dat[c].iloc[k-1]
-                dat['harvest_' + c].iloc[k-1] = -dX
+                dat['harvest_' + c].iloc[k] = -dX
 
             # divide poistuma_runko aines between tukki and kuitu based on tukki & kuitu volume's
             sf = dat['sawVol'].iloc[k-1] / (dat['sawVol'].iloc[k-1] + dat['pulpVol'].iloc[k-1] + EPS)
-            dat['harvest_Log'] = dat['harvest_bioStemComm'] * sf
-            dat['harvest_Fibre'] = dat['harvest_bioStemComm'] * (1 - sf)
+            dat['harvest_Log'].iloc[k]  = dat['harvest_bioStemComm'].iloc[k]  * sf
+            dat['harvest_Fibre'].iloc[k]  = dat['harvest_bioStemComm'].iloc[k]  * (1 - sf)
     
+    dat['bioTot'] = dat[['bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']].sum(axis=1)
+
     # biomass growth (NPP, g C m-2 a-1)
     dat['NPP'] = 0.0
     for k in range(1, len(dat)):
@@ -388,7 +412,7 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
     #    dat['CWD'].iloc[ix] = 0.0 
 
     data = dat.copy()
-    data = data.iloc[0:-1]
+    data = data.iloc[0:-2]
     ## cycle rotations over timespan(yrs)
     
     # EAF
@@ -399,7 +423,7 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
         #cycle for multiple rotations
         tmp = dat.iloc[1:-1]
 
-        cycles = np.int(np.ceil((timespan - len(dat)) / rl))
+        cycles = np.int(np.ceil((timespan - len(dat)) / rl)) + 1
         #print(cycles)
         for n in range(cycles):
             data = pd.concat([data, tmp])
@@ -411,7 +435,7 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
         tmp = dat.iloc[ix[0]+2:]
         #print(tmp)
         rl = len(tmp)
-        cycles = np.int(np.ceil((timespan - len(dat)) /rl))
+        cycles = np.int(np.ceil((timespan - len(dat)) /rl)) + 1
         
         for n in range(cycles):
             data = pd.concat([data, tmp])
