@@ -182,9 +182,13 @@ def compute_stocks_fluxes(dat, ftype=None, wtd_para={'a': -50.6, 'b': 29.36, 'c'
 
     # restoration to open mires: whole stand is cut at t=0
     if ftype in ['RME', 'ROL', 'ROM']:
-
+        print('restoring to open!')
         res['year']  = dat['year']
-        
+        res['C_tree'] = dat['bioTot']
+        res['C_tree'].iloc[1:] = 0.0
+
+        #res['F_tree'] = -dat['NPP']
+
         # ----- Soil CO2, CH4 and N2O emissions
         res['F_soil'] = Fsoil[ftype]['CO2']
         res['F_CH4'] = Fsoil[ftype]['CH4']
@@ -230,9 +234,9 @@ def compute_stocks_fluxes(dat, ftype=None, wtd_para={'a': -50.6, 'b': 29.36, 'c'
         F2 = np.zeros(N)
         F3 = np.zeros(N)
         
-        ffol = dat['FFol'].values; ffol[1:] = 0.0
-        ffwd = dat['FWD'].values; ffwd[1:] = 0.0
-        fcwd = dat['CWD'].values; fcwd[1:] = 0.0
+        ffol = dat['FFol'].values; ffol[2:] = 0.0
+        ffwd = dat['FWD'].values; ffwd[2:] = 0.0
+        fcwd = dat['CWD'].values; fcwd[2:] = 0.0
 
         for j in range(0,N):
             S1[j], F1[j] = Rfol.update(ffol[j])
@@ -241,12 +245,14 @@ def compute_stocks_fluxes(dat, ftype=None, wtd_para={'a': -50.6, 'b': 29.36, 'c'
 
         res['C_resid'] = S1 + S2 + S3
         res['F_resid'] = F1 + F1 + F3
- 
+
+        #print(res['C_resid'].head(), res['C_tree'].head())
+
         del S1, S2, S3, F1, F2, F3
 
     # restoration to tree-covered mires
     if ftype in ['RSM', 'RPM']:
-        print('restoring to open!')
+        print('restoring to tree-covered!')
         res[['Vol', 'BA']]  = dat[['vol', 'BA']].iloc[0].values
         res['year'] = dat['year']
         res['Age'] = dat['DomAge'].iloc[0] + np.arange(0,N)

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # massage motti-outputs for Radiative Forcing calculations
 
 import numpy as np
@@ -56,7 +58,7 @@ def interp_to_denser_index(df, new_index):
     df_out = pd.DataFrame(index=new_index)
     df_out.index.name = df.index.name
 
-    for colname, col in df.iteritems():
+    for colname, col in df.items():
         #print(colname, col)
         df_out[colname] = np.interp(new_index, df.index, col)
 
@@ -87,10 +89,12 @@ def read_csv_until_column_change(filepath, delimiter=";"):
 
 def massage_LukeMotti(ffile, CCF=False, timespan=300):
 
+    dt = 1./365
     #ffile = r'Data/Ruotsinkylä_Mtkg.xlsx'
 
     # read file
-    raw = pd.read_excel(ffile, sheet_name='Metsikkötaulu')
+    #raw = pd.read_excel(ffile, sheet_name='Metsikkötaulu')
+    raw = pd.read_excel(ffile, sheet_name=0, engine='openpyxl')
 
     # remove duplicate rows
     raw.drop_duplicates(inplace=True)
@@ -100,7 +104,7 @@ def massage_LukeMotti(ffile, CCF=False, timespan=300):
     x = raw['tukki'].values + raw['kuitu'].values
     raw['runko aines'] = aa * x
     raw['biom_yht'] = raw[['runko aines', 'runko hukka', 'elävät oksat', 'kuolleet oksat', 'lehdet', 'kannot', 'juuret_karkea', 'juuret_hieno']].sum(axis=1)
-
+    
     # convert biomasses ton ha-1 --> g C m-2
     for c in ['runko aines', 'runko hukka', 'elävät oksat', 'kuolleet oksat', 'lehdet', 'kannot', 'juuret_karkea', 'juuret_hieno', 'biom_yht']:
         raw[c] = raw[c] * cf
@@ -110,17 +114,14 @@ def massage_LukeMotti(ffile, CCF=False, timespan=300):
     raw['puusto_hiili_yht'] = raw['puusto_hiili_yht'] * 100 / c_to_co2
     raw['laho_hiili_yht'] = raw['laho_hiili_yht'] * 100 / c_to_co2
 
-    # in years when stand has been harvested, there are values pre- and post-harvest. Add +1 to post-harvest year
+    # in years when stand has been harvested, there are values pre- and post-harvest. Add +dt to post-harvest year
     for k in range(1, len(raw)):
         if raw['vuosi'].iloc[k] == raw['vuosi'].iloc[k-1]:
-            raw['vuosi'].iloc[k] += 1
-            raw['Ika'].iloc[k] += 1
+            raw['vuosi'].iloc[k] += dt
+            #raw['Ika'].iloc[k] += 1
 
     raw.index = raw['vuosi']
     #raw.reset_index(inplace=True, drop=True)
-
-    # save initial state of the stand
-    initial_state = raw.iloc[0].copy()
 
 
     # if simulations start from bare ground, tilavuus is zero until large trees emerge. In this case, interpolate tilavuus and biom_yht based on 'PPA'
@@ -144,131 +145,148 @@ def massage_LukeMotti(ffile, CCF=False, timespan=300):
             del ix, aa#, bb
 
         del vol, ba, bm
-    
 
-    # interpolate linearly to annual values
-    tmp = np.arange(0, max(raw['vuosi']+1), 1)
+    # now rename columns so that they match those of OptiMotti outputs
+    raw.rename(columns={'vuosi': 'year', 'Ika': 'DomAge', 'hdom': 'DomHeight', 'PPA': 'BA', 
+                        'tilavuus': 'vol', 'tukki': 'sawVol', 'kuitu': 'pulpVol',
+                        'runko aines': 'bioStemComm', 'runko hukka': 'bioStemWaste',
+                        'elävät oksat': 'bioBranches_live', 'kuolleet oksat': 'bioBranches_dead',
+                        'lehdet': 'bioFoliage', 'kannot': 'bioStumps',
+                        'juuret_karkea': 'bioRootsC', 'juuret_hieno': 'bioRootsF',
+                        'biom_yht': 'bioTot'}, inplace=True)
     
-    # annual motti-file
-    dat = interp_to_denser_index(raw, tmp)
-    dat['Ika'] = np.floor(dat['Ika'].values)
-    dat = dat[usecols]
-    
-    #dat.iloc[0] = initial_state[usecols]
+    raw['bioBranches'] = raw['bioBranches_live'] + raw['bioBranches_dead']
+    raw.drop(columns=['bioBranches_live', 'bioBranches_dead'], inplace=True)
+
+    usecols = raw.columns.tolist()
+
+    """
+    Step 2: We have correct data but in sparse grid. Interpolate to fine grid
+    """
+    # interpolate linearly to dt interval
+    new_index = np.arange(0, raw.index.max() + dt, dt)
+
+    # reindex + interpolate
+    dat = (raw.reindex(new_index)      # insert NaNs at new points
+           .interpolate(method="index"))  # interpolate based on index values
 
     # --- calculate harvest removals ---
-    dat = dat.reindex(columns=dat.columns.tolist() + ['poistuma_vol', 'poistuma_runko aines', 'poistuma_runko hukka', 
-                                                    'poistuma_elävät oksat', 'poistuma_kuolleet oksat', 
-                                                    'poistuma_lehdet', 'poistuma_kannot', 'poistuma_juuret_karkea', 
-                                                    'poistuma_juuret_hieno', 'poistuma_biom_yht', 'poistuma_tukki', 'poistuma_kuitu', 
-                                                    'NPP', 'FFol', 'FWD', 'CWD'])
-
-    dat[['poistuma_vol', 'poistuma_runko aines', 'poistuma_runko hukka', 'poistuma_elävät oksat', 'poistuma_kuolleet oksat', 
-         'poistuma_lehdet', 'poistuma_kannot', 'poistuma_juuret_karkea', 'poistuma_juuret_hieno', 'poistuma_biom_yht', 'poistuma_tukki', 
-         'poistuma_kuitu', 'NPP', 'FFol', 'FWD', 'CWD']] = 0.0
+    dat = dat.reindex(columns=dat.columns.tolist() + ['harvest_vol', 'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC',
+                                                      'harvest_bioBranches', 'harvest_bioStumps', 'harvest_bioTot', 
+                                                      'harvest_bioStemComm', 'harvest_bioStemWaste', 
+                                                      'harvest_Log', 'harvest_Fibre', 
+                                                      'NPP', 'FFol', 'FWD', 'CWD'])
+    
+    dat[['harvest_vol', 'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC','harvest_bioBranches', 'harvest_bioStumps', 'harvest_bioTot', 
+        'harvest_bioStemComm', 'harvest_bioStemWaste', 'harvest_Log', 'harvest_Fibre', 'NPP', 'FFol', 'FWD', 'CWD']] = 0.0
     
     for k in range(1, len(dat)):
-        dV = dat['tilavuus'].iloc[k] - dat['tilavuus'].iloc[k-1]
+        dV = dat['vol'].iloc[k] - dat['vol'].iloc[k-1]
         if dV < 0:
-            # oli k-1
-            dat['poistuma_vol'].iloc[k] = -dV
-            for c in ['runko aines', 'runko hukka', 'elävät oksat', 'kuolleet oksat', 'lehdet', 'kannot', 'juuret_karkea', 'juuret_hieno', 'biom_yht']:
+            dat['harvest_vol'].iloc[k] = -dV
+            for c in ['bioTot', 'bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']:
                 dX = dat[c].iloc[k] - dat[c].iloc[k-1]
-                dat['poistuma_' + c].iloc[k] = -dX
+                #dat['harvest_' + c].iloc[k-1] = -dX
+                dat['harvest_' + c].iloc[k] = -dX
 
             # divide poistuma_runko aines between tukki and kuitu based on tukki & kuitu volume's
-            sf = dat['tukki'].iloc[k-1] / (dat['tukki'].iloc[k-1] + dat['kuitu'].iloc[k-1] + EPS)
-
-            dat['poistuma_tukki'].iloc[k] = dat['poistuma_runko aines'].iloc[k] * sf
-            dat['poistuma_kuitu'].iloc[k] = dat['poistuma_runko aines'].iloc[k] * (1 - sf)
-    
-    dat['biom_yht'] = dat[['runko aines', 'runko hukka', 'elävät oksat', 'kuolleet oksat', 'lehdet', 'kannot', 'juuret_karkea', 'juuret_hieno']].sum(axis=1)
-    
-    # biomass growth (NPP, g C m-2 a-1)
-    dat['NPP'] = 0.0
-    for k in range(1, len(dat)):
-        dX = dat['biom_yht'].iloc[k] - dat['biom_yht'].iloc[k-1]
-        #dX = dat['hiilivarasto'].iloc[k] - dat['hiilivarasto'].iloc[k-1]
-        if dX > 0:
-            dat['NPP'].iloc[k] = dX
-
-    dat['NPP'].interpolate('linear', inplace=True)
-    
-    #ix = np.where(np.isnan(dat['NPP']))[0]
-    #if len(ix) > 0:
-    #    dat['NPP'].iloc[ix] = 0.0
+            sf = dat['sawVol'].iloc[k-1] / (dat['sawVol'].iloc[k-1] + dat['pulpVol'].iloc[k-1] + EPS)
+            dat['harvest_Log'].iloc[k]  = dat['harvest_bioStemComm'].iloc[k]  * sf
+            dat['harvest_Fibre'].iloc[k]  = dat['harvest_bioStemComm'].iloc[k]  * (1 - sf)
 
     # litter inputs from harvests: foliage, FWD, CWD: this follows Ambio-paper
 
-    dat['FFol'] = dat['poistuma_lehdet'] + dat['poistuma_juuret_hieno'] 
-    dat['FWD'] = dat['poistuma_elävät oksat'] + dat['poistuma_kuolleet oksat'] + dat['poistuma_juuret_karkea']
-    dat['CWD'] = dat['poistuma_kannot'] + dat['poistuma_runko hukka']
+    dat['FFol'] = dat['harvest_bioFoliage'] + dat['harvest_bioRootsF'] 
+    dat['FWD'] = dat['harvest_bioBranches'] + dat['harvest_bioRootsC']
+    dat['CWD'] = dat['harvest_bioStumps'] + dat['harvest_bioStemWaste']
 
-    ix = np.where(np.isnan(dat['FFol']) == True)[0]
-    if len(ix) > 0:
-        dat['FFol'].iloc[ix] = 0.0
-        dat['FWD'].iloc[ix] = 0.0
-        dat['CWD'].iloc[ix] = 0.0 
+    # biomass growth (NPP, g C m-2 a-1)
+    dat['NPP'] = np.nan
+    for k in range(1, len(dat)):
+        dX = dat['bioTot'].iloc[k] - dat['bioTot'].iloc[k-1]
+        #dX = dat['hiilivarasto'].iloc[k] - dat['hiilivarasto'].iloc[k-1]
+        if dX > 0:
+            dat['NPP'].iloc[k] = dX
+    dat['NPP'] = dat['NPP'].ffill().ffill()
+
+    """
+    Step 3: coarsen the data to annual values: for state variables take last value within year, for harvest removals take sum within year
+    """
+    
+    # bins based on coarse interval dt_new = 1.0
+    bins = np.floor(dat.index).astype(int)
+
+    sum_cols = ['harvest_vol', 'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC', 'harvest_bioBranches', 'harvest_bioStumps', 
+                'harvest_bioTot', 'harvest_bioStemComm', 'harvest_bioStemWaste', 'harvest_Log', 'harvest_Fibre', 
+                'FFol', 'FWD', 'CWD', 'NPP']
+    sum_part = dat[sum_cols].groupby(bins).sum()
+
+    last_part = dat[usecols].groupby(bins).last()
+    last_part.iloc[0] = dat[usecols].iloc[0]
+    dat2 = dat.copy()
+    del dat
+
+    # combine
+    dat = sum_part.join(last_part)
 
     data = dat.copy()
-    data = data.iloc[0:-1]
-
+    #data = data.iloc[0:-1]
+    
+    """
+    Step 4: cycle the data to desired timespan  
+    """
+    
+    # EAF
     if CCF == False:
-        # -- rotation length---
-        rl = np.max(dat['Ika'])
-        #dat['Ika'].iloc[-1] = 0
-        #cycle for multiple rotations
-        tmp = dat.iloc[1:-1]
+        # -- rotation length--
+        rl = len(dat)
         
-        rl = np.max(data['Ika'])
-        cycles = np.int(np.ceil(timespan/rl)) -1
+        #cycle for multiple rotations
+        tmp = data[1:].copy()
+
+        cycles = int(np.ceil((timespan - len(data)) / rl)) + 1
         #print(cycles)
         for n in range(cycles):
             data = pd.concat([data, tmp])
 
-    data.reset_index(inplace=True)
+    # CCF    
+    else:
+        data = dat.copy()
+        data = data.iloc[0:-1]
+
+        # indices of two last harvests. We cycle data after 2nd last harvest and assume biomass and volume growht between harvests is linear
+        ix = np.where(dat['harvest_vol'] > 0)[0][-2:]
+        harvest_interval = ix[1] - ix[0]
+        new_index = np.arange(0, harvest_interval, 1)
+        tmp = pd.DataFrame(index=new_index, columns=dat.columns, data=np.zeros((len(new_index), len(dat.columns))))
+
+        #print(harvest_interval, new_index, tmp[['vol', 'harvest_vol', 'bioTot', 'harvest_bioTot']])
+        tmp.iloc[-1] = dat.iloc[-2]
+        tmp.iloc[0]= dat.iloc[-1]
+        tmp.loc[tmp.index[1:-1], usecols] = np.nan
+
+        tmp[usecols] = tmp[usecols].interpolate(method="index")
+ 
+        # biomass growth (NPP, g C m-2 a-1): annual average must match dbiomass/dt
+        dX = tmp['bioTot'].iloc[-1] - tmp['bioTot'].iloc[0]
+        tmp['NPP'] = dX / harvest_interval
+
+        rl = len(tmp)
+        cycles = int(np.ceil((timespan - len(dat)) /rl)) + 1
+        
+        for n in range(cycles):
+            data = pd.concat([data, tmp])
+
+    data.reset_index(inplace=True, drop=True)
     data = data.iloc[0:timespan]
+    data['year'] = data.index.values
 
-    # rename columns to match those of OptiMotti-outputs
-
-    out = pd.DataFrame(data = None, index=data.index, 
-                       columns=['year', 'DomAge', 'DomHeight', 'Hg', 'BA', 'N', 'Dg', 'vol', 'sawVol',
-                                'pulpVol', 'bioTot', 'bioStemComm', 'bioStemWaste', 'bioBranches',
-                                'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF', 'harvest_vol',
-                                'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC',
-                                'harvest_bioBranches', 'harvest_bioStumps', 'harvest_bioTot',
-                                'harvest_bioStemComm', 'harvest_bioStemWaste', 'harvest_Log',
-                                'harvest_Fibre', 'NPP', 'FFol', 'FWD', 'CWD']
-                        )
-    out['year'] = data['vuosi']; out['DomAge'] = data['Ika']; out['DomHeight'] = data['hdom']
-    out[['N', 'Hg', 'Dg']] = data[['N', 'Hg', 'Dg']]
-    out['BA'] = data['PPA']; out['vol'] = data['tilavuus']
-    
-    out['sawVol'] = data['tukki']; out['pulpVol'] = data['kuitu'] 
-    
-    c  =  ['bioTot', 'bioStemComm', 'bioStemWaste', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']
-    out[c] = data[['biom_yht', 'runko aines', 'runko hukka', 'lehdet', 'kannot', 'juuret_karkea', 'juuret_hieno']]
-    
-    out['bioBranches'] = data['elävät oksat'] + data['kuolleet oksat']
-
-    d = ['harvest_vol', 'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC',
-        'harvest_bioStumps', 'harvest_bioTot',
-          'harvest_bioStemComm', 'harvest_bioStemWaste', 'harvest_Log',
-           'harvest_Fibre', 'NPP', 'FFol', 'FWD', 'CWD']
-    
-    out[d] = data[['poistuma_vol', 'poistuma_lehdet', 'poistuma_juuret_hieno', 'poistuma_juuret_karkea', 
-                   'poistuma_kannot', 'poistuma_biom_yht',
-                   'poistuma_runko aines', 'poistuma_runko hukka', 'poistuma_tukki', 
-                   'poistuma_kuitu', 'NPP', 'FFol', 'FWD', 'CWD']]
-    
-    out['harvest_bioBranches'] = data['poistuma_elävät oksat'] + data['poistuma_kuolleet oksat']
-    
-    out['year'] = out.index.values
-    
-    return out
+    return data
 
 
-def massage_OptiMotti(ffile, CCF=False, timespan=300):
+def massage_OptiMotti(ffile, ss_harvest_cycle, CCF=False, timespan=300):
+
+    dt = 1./356 # daily timestep
 
     cols = ['year', 'period', 'DomAge', 'DomHeight', 'Hg', 'BA', 'N', 'Dg', 'mainSpecies', 'vol', 'sawVol', 'pulpVol', 'biomass', 
             'bioTotUt', 'bioStemCommUt', 'bioStemWasteUt', 'bioBranchesLUt', 'bioBranchesDUt', 'bioFoliageUt', 'bioStumpsUt', 'bioRootsCUt', 'bioRootsFUt', 
@@ -288,11 +306,14 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
     ix = np.where(np.isfinite(raw['year']))[0]
     raw = raw.iloc[ix]
     
-
     # remove duplicate rows
     raw.drop_duplicates(inplace=True)
     raw.index = raw['year']
     
+
+    """
+    Step 1: correct some channenges in the data
+    """
     # in beginning of simulations all root biomass is located in variable 'bioRootsC12'. Correct this using average fine to total root biomass from LukeMotti runs for similar sites
     f = 0.05
     rb = raw['bioRootsC12'].values
@@ -310,19 +331,13 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
     
     # ---------------------------------------------------
 
-    # in years when stand has been harvested, there are values pre- and post-harvest. Add +1 to post-harvest year
+    # in years when stand has been harvested, there are values pre- and post-harvest. Add +dt to post-harvest year
     for k in range(1, len(raw)):
         if raw['year'].iloc[k] == raw['year'].iloc[k-1]:
-            raw['year'].iloc[k] += 1
-            raw['DomAge'].iloc[k] += 1
+            raw['year'].iloc[k] += dt
+            raw['DomAge'].iloc[k] += dt
     
     raw.index = raw['year']
-    # save initial state of the stand
-    initial_state = raw.iloc[0].copy()
-
-    # start from 2nd row
-    # raw = raw.iloc[1:]
-    #print(raw[['year', 'vol', 'BA']].head(3))
 
     # combine biomasses from vallitsevat jaksot, siemenpuut etc. into one, and convert ton DM ha-1 to g C m-2
     components = ['bioTot', 'bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']
@@ -337,30 +352,34 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
 
     raw = pd.concat([raw, tmp], axis=1)
     
-    # if simulations start from bare ground, tilavuus is zero until large trees emerge. In this case, interpolate 'vol' based on bioTot
+
+    # this corrects for inconsistencies in biomass models of early development.
+    # We assume that when trees first emerge in Motti results , vol and biomasses matches that
+    # the recovery of vol and biomasses from t=0 to t1 is exponential; f = 0.0078 * np.exp(4.8571 * t)
     if CCF == False:
-        vol = raw['vol'].values
-        bm = raw['bioTot'].values
+        bm0 = raw['bioTotUt'].values
+        yy = raw['year'].values
 
-        ix = np.min(np.nonzero(vol[1:])) + 1
-        #print(ix)
-        if ix > 0:
-            bb = vol[ix] / bm[ix]
+        ix = np.max(np.nonzero(bm0))
 
-            vol[1:ix] = bb * bm[1:ix]
-            raw['vol'] = vol
-            del ix, bb
+        t = yy[1:ix + 1] / yy[ix + 1]
+        f = 0.0078 * np.exp(4.8571 * t)
 
-        del vol, bm
+        for c in ['vol','bioTot', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']:
+            ymax = raw[c].values[ix + 1]
+            raw[c].iloc[1:ix+1] = f * ymax
 
     raw = raw[usecols]
     
-    # interpolate linearly to annual values
-    tmp = np.arange(0, max(raw['year']+1), 1)
-    
-    # annual motti-file
-    dat = interp_to_denser_index(raw, tmp)
-    dat['DomAge'] = np.floor(dat['DomAge'].values)
+    """
+    Step 2: We have correct data but in sparse grid. Interpolate to daily values
+    """
+    # interpolate linearly to dt interval
+    new_index = np.arange(raw.index.min(), raw.index.max() + dt, dt)
+
+    # reindex + interpolate
+    dat = (raw.reindex(new_index)      # insert NaNs at new points
+           .interpolate(method="index"))  # interpolate based on index values
 
     # --- calculate harvest removals ---
     dat = dat.reindex(columns=dat.columns.tolist() + ['harvest_vol', 'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC',
@@ -384,58 +403,85 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
             sf = dat['sawVol'].iloc[k-1] / (dat['sawVol'].iloc[k-1] + dat['pulpVol'].iloc[k-1] + EPS)
             dat['harvest_Log'].iloc[k]  = dat['harvest_bioStemComm'].iloc[k]  * sf
             dat['harvest_Fibre'].iloc[k]  = dat['harvest_bioStemComm'].iloc[k]  * (1 - sf)
-    
-    dat['bioTot'] = dat[['bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']].sum(axis=1)
 
-    # biomass growth (NPP, g C m-2 a-1)
-    dat['NPP'] = 0.0
-    for k in range(1, len(dat)):
-        dX = dat['bioTot'].iloc[k] - dat['bioTot'].iloc[k-1]
-        #dX = dat['hiilivarasto'].iloc[k] - dat['hiilivarasto'].iloc[k-1]
-        if dX > 0:
-            dat['NPP'].iloc[k] = dX
-        #else:
-        #    dat['NPP'].iloc[k] = np.NaN
-
-    dat['NPP'].interpolate('linear', inplace=True)
-    
     # litter inputs from harvests: foliage, FWD, CWD: this follows Ambio-paper
 
     dat['FFol'] = dat['harvest_bioFoliage'] + dat['harvest_bioRootsF'] 
     dat['FWD'] = dat['harvest_bioBranches'] + dat['harvest_bioRootsC']
     dat['CWD'] = dat['harvest_bioStumps'] + dat['harvest_bioStemWaste']
 
-    #ix = np.where(np.isnan(dat['FFol']) == True)[0]
-    #if len(ix) > 0:
-    #    dat['FFol'].iloc[ix] = 0.0
-    #    dat['FWD'].iloc[ix] = 0.0
-    #    dat['CWD'].iloc[ix] = 0.0 
+    # biomass growth (NPP, g C m-2 a-1)
+    dat['NPP'] = np.nan
+    for k in range(1, len(dat)):
+        dX = dat['bioTot'].iloc[k] - dat['bioTot'].iloc[k-1]
+        if dX > 0:
+            dat['NPP'].iloc[k] = dX
+    dat['NPP'] = dat['NPP'].ffill().ffill()
+
+    """
+    Step 3: coarsen the data to annual values: for state variables take last value within year, for harvest removals take sum within year
+    """
+    
+    # bins based on coarse interval dt_new = 1.0
+    bins = np.floor(dat.index).astype(int)
+
+    sum_cols = ['harvest_vol', 'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC', 'harvest_bioBranches', 'harvest_bioStumps', 
+                'harvest_bioTot', 'harvest_bioStemComm', 'harvest_bioStemWaste', 'harvest_Log', 'harvest_Fibre', 
+                'FFol', 'FWD', 'CWD', 'NPP']
+    sum_part = dat[sum_cols].groupby(bins).sum()
+
+    last_part = dat[usecols].groupby(bins).last()
+    last_part.iloc[0] = dat[usecols].iloc[0]
+    #dat2 = dat.copy()
+    del dat
+
+    # combine
+    dat = sum_part.join(last_part)
 
     data = dat.copy()
-    data = data.iloc[0:-2]
-    ## cycle rotations over timespan(yrs)
+    #data = data.iloc[0:-1]
+    
+    """
+    Step 4: cycle the data to desired timespan  
+    """
     
     # EAF
     if CCF == False:
         # -- rotation length--
-        rl = np.max(data['DomAge'])
+        rl = len(dat)
         
         #cycle for multiple rotations
-        tmp = dat.iloc[1:-1]
+        tmp = data[1:].copy()
 
-        cycles = np.int(np.ceil((timespan - len(dat)) / rl)) + 1
+        cycles = int(np.ceil((timespan - len(data)) / rl)) + 1
         #print(cycles)
         for n in range(cycles):
             data = pd.concat([data, tmp])
 
     # CCF    
     else:
-        # indices of two last harvests. We cycle data after 2nd last harvest!
+        data = dat.copy()
+        data = data.iloc[0:-1]
+
+        # indices of two last harvests. We cycle data after 2nd last harvest and assume biomass and volume growht between harvests is linear
         ix = np.where(dat['harvest_vol'] > 0)[0][-2:]
-        tmp = dat.iloc[ix[0]+2:]
-        #print(tmp)
+        harvest_interval = ss_harvest_cycle
+        new_index = np.arange(0, harvest_interval, 1)
+        tmp = pd.DataFrame(index=new_index, columns=dat.columns, data=np.zeros((len(new_index), len(dat.columns))))
+
+        #print(harvest_interval, new_index, tmp[['vol', 'harvest_vol', 'bioTot', 'harvest_bioTot']])
+        tmp.iloc[-1] = dat.iloc[-2]
+        tmp.iloc[0]= dat.iloc[-1]
+        tmp.loc[tmp.index[1:-1], usecols] = np.nan
+
+        tmp[usecols] = tmp[usecols].interpolate(method="index")
+ 
+        # biomass growth (NPP, g C m-2 a-1): annual average must match dbiomass/dt
+        dX = tmp['bioTot'].iloc[-1] - tmp['bioTot'].iloc[0]
+        tmp['NPP'] = dX / harvest_interval
+
         rl = len(tmp)
-        cycles = np.int(np.ceil((timespan - len(dat)) /rl)) + 1
+        cycles = int(np.ceil((timespan - len(dat)) /rl)) + 1
         
         for n in range(cycles):
             data = pd.concat([data, tmp])
@@ -445,3 +491,184 @@ def massage_OptiMotti(ffile, CCF=False, timespan=300):
     data['year'] = data.index.values
 
     return data
+
+# # %%
+# def massage_OptiMotti(ffile, CCF=False, timespan=300):
+
+#     cols = ['year', 'period', 'DomAge', 'DomHeight', 'Hg', 'BA', 'N', 'Dg', 'mainSpecies', 'vol', 'sawVol', 'pulpVol', 'biomass', 
+#             'bioTotUt', 'bioStemCommUt', 'bioStemWasteUt', 'bioBranchesLUt', 'bioBranchesDUt', 'bioFoliageUt', 'bioStumpsUt', 'bioRootsCUt', 'bioRootsFUt', 
+#             'bioTot12', 'bioStemComm12', 'bioStemWaste12', 'bioBranchesL12', 'bioBranchesD12', 'bioFoliage12', 'bioStumps12', 'bioRootsC12', 'bioRootsF12', 
+#             'bioTot3', 'bioStemComm3', 'bioStemWaste3', 'bioBranchesL3', 'bioBranchesD3', 'bioFoliage3', 'bioStumps3', 'bioRootsC3', 'bioRootsF3', 'bioTot4', 
+#             'bioStemComm4', 'bioStemWaste4', 'bioBranchesL4', 'bioBranchesD4', 'bioFoliage4', 'bioStumps4', 'bioRootsC4', 'bioRootsF4']
+
+
+#     usecols = ['year', 'DomAge', 'DomHeight', 'Hg', 'BA', 'N', 'Dg', 'vol', 'sawVol', 'pulpVol', 
+#                'bioTot', 'bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']
+
+#     # read file
+#     #ffile = r'Data/Development_opt_tst.csv'
+    
+#     raw = read_csv_until_column_change(ffile, delimiter=';')
+#     #raw = pd.read_csv(ffile, sep=',')
+#     ix = np.where(np.isfinite(raw['year']))[0]
+#     raw = raw.iloc[ix]
+    
+
+#     # remove duplicate rows
+#     raw.drop_duplicates(inplace=True)
+#     raw.index = raw['year']
+    
+#     # in beginning of simulations all root biomass is located in variable 'bioRootsC12'. Correct this using average fine to total root biomass from LukeMotti runs for similar sites
+#     f = 0.05
+#     rb = raw['bioRootsC12'].values
+#     raw['bioRootsC12'] = (1 - f) * rb
+#     raw['bioRootsF12'] = f * rb
+
+#     # ----------------------------------------------------
+#     #  correction to make all simulations harmonized (mistake in OptiMotti CCF simulations; commercial stem biomass is wrong)
+#     # NOTE - DOES NOT WORK IF BIOMASS ALSO IN OTHER 'JAKSOT' THAN 1 & 2
+
+#     aa = 0.38 # average ratio of runko aines / (tukki + kuitu vol)
+#     x = raw['sawVol'].values + raw['pulpVol'].values
+#     raw['bioStemComm12'] = aa * x
+#     raw['bioTot12'] = raw[['bioStemComm12', 'bioStemWaste12', 'bioBranchesL12', 'bioBranchesD12', 'bioFoliage12', 'bioStumps12', 'bioRootsC12', 'bioRootsF12']].sum(axis=1)
+    
+#     # ---------------------------------------------------
+
+#     # in years when stand has been harvested, there are values pre- and post-harvest. Add +1 to post-harvest year
+#     for k in range(1, len(raw)):
+#         if raw['year'].iloc[k] == raw['year'].iloc[k-1]:
+#             raw['year'].iloc[k] += 1
+#             raw['DomAge'].iloc[k] += 1
+    
+#     raw.index = raw['year']
+#     # save initial state of the stand
+#     initial_state = raw.iloc[0].copy()
+
+#     # start from 2nd row
+#     # raw = raw.iloc[1:]
+#     #print(raw[['year', 'vol', 'BA']].head(3))
+
+#     # combine biomasses from vallitsevat jaksot, siemenpuut etc. into one, and convert ton DM ha-1 to g C m-2
+#     components = ['bioTot', 'bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']
+
+#     tmp = pd.DataFrame(data = np.zeros((len(raw), len(components))), index=raw.index, columns=components)
+
+#     for c in components:
+#         # find indices of columns containing substring c
+#         cix = [i for i, s in enumerate(cols) if c in s]
+#         subset = [cols[i] for i in cix]
+#         tmp[c] = raw[subset].sum(axis=1) * cf
+
+#     raw = pd.concat([raw, tmp], axis=1)
+    
+#     # if simulations start from bare ground, tilavuus is zero until large trees emerge. In this case, interpolate 'vol' based on bioTot
+#     if CCF == False:
+#         vol = raw['vol'].values
+#         bm = raw['bioTot'].values
+
+#         ix = np.min(np.nonzero(vol[1:])) + 1
+#         #print(ix)
+#         if ix > 0:
+#             bb = vol[ix] / bm[ix]
+
+#             vol[1:ix] = bb * bm[1:ix]
+#             raw['vol'] = vol
+#             del ix, bb
+
+#         del vol, bm
+
+#     raw = raw[usecols]
+    
+#     # interpolate linearly to annual values
+#     tmp = np.arange(0, max(raw['year']+1), 1)
+    
+#     # annual motti-file
+#     dat = interp_to_denser_index(raw, tmp)
+#     dat['DomAge'] = np.floor(dat['DomAge'].values)
+
+#     # --- calculate harvest removals ---
+#     dat = dat.reindex(columns=dat.columns.tolist() + ['harvest_vol', 'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC',
+#                                                       'harvest_bioBranches', 'harvest_bioStumps', 'harvest_bioTot', 
+#                                                       'harvest_bioStemComm', 'harvest_bioStemWaste', 
+#                                                       'harvest_Log', 'harvest_Fibre', 
+#                                                       'NPP', 'FFol', 'FWD', 'CWD'])
+    
+#     dat[['harvest_vol', 'harvest_bioFoliage', 'harvest_bioRootsF', 'harvest_bioRootsC','harvest_bioBranches', 'harvest_bioStumps', 'harvest_bioTot', 
+#         'harvest_bioStemComm', 'harvest_bioStemWaste', 'harvest_Log', 'harvest_Fibre', 'NPP', 'FFol', 'FWD', 'CWD']] = 0.0
+    
+#     for k in range(1, len(dat)):
+#         dV = dat['vol'].iloc[k] - dat['vol'].iloc[k-1]
+#         if dV < 0:
+#             dat['harvest_vol'].iloc[k] = -dV
+#             for c in ['bioTot', 'bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']:
+#                 dX = dat[c].iloc[k] - dat[c].iloc[k-1]
+#                 dat['harvest_' + c].iloc[k] = -dX
+
+#             # divide poistuma_runko aines between tukki and kuitu based on tukki & kuitu volume's
+#             sf = dat['sawVol'].iloc[k-1] / (dat['sawVol'].iloc[k-1] + dat['pulpVol'].iloc[k-1] + EPS)
+#             dat['harvest_Log'].iloc[k]  = dat['harvest_bioStemComm'].iloc[k]  * sf
+#             dat['harvest_Fibre'].iloc[k]  = dat['harvest_bioStemComm'].iloc[k]  * (1 - sf)
+    
+#     dat['bioTot'] = dat[['bioStemComm', 'bioStemWaste', 'bioBranches', 'bioFoliage', 'bioStumps', 'bioRootsC', 'bioRootsF']].sum(axis=1)
+
+#     # biomass growth (NPP, g C m-2 a-1)
+#     dat['NPP'] = 0.0
+#     for k in range(1, len(dat)):
+#         dX = dat['bioTot'].iloc[k] - dat['bioTot'].iloc[k-1]
+#         #dX = dat['hiilivarasto'].iloc[k] - dat['hiilivarasto'].iloc[k-1]
+#         if dX > 0:
+#             dat['NPP'].iloc[k] = dX
+#         #else:
+#         #    dat['NPP'].iloc[k] = np.NaN
+
+#     dat['NPP'].interpolate('linear', inplace=True)
+    
+#     # litter inputs from harvests: foliage, FWD, CWD: this follows Ambio-paper
+
+#     dat['FFol'] = dat['harvest_bioFoliage'] + dat['harvest_bioRootsF'] 
+#     dat['FWD'] = dat['harvest_bioBranches'] + dat['harvest_bioRootsC']
+#     dat['CWD'] = dat['harvest_bioStumps'] + dat['harvest_bioStemWaste']
+
+#     #ix = np.where(np.isnan(dat['FFol']) == True)[0]
+#     #if len(ix) > 0:
+#     #    dat['FFol'].iloc[ix] = 0.0
+#     #    dat['FWD'].iloc[ix] = 0.0
+#     #    dat['CWD'].iloc[ix] = 0.0 
+
+#     data = dat.copy()
+#     data = data.iloc[0:-2]
+#     ## cycle rotations over timespan(yrs)
+    
+#     # EAF
+#     if CCF == False:
+#         # -- rotation length--
+#         rl = np.max(data['DomAge'])
+        
+#         #cycle for multiple rotations
+#         tmp = dat.iloc[1:-1]
+
+#         cycles = int(np.ceil((timespan - len(dat)) / rl)) + 1
+#         #print(cycles)
+#         for n in range(cycles):
+#             data = pd.concat([data, tmp])
+
+#     # CCF    
+#     else:
+#         # indices of two last harvests. We cycle data after 2nd last harvest!
+#         ix = np.where(dat['harvest_vol'] > 0)[0][-2:]
+#         tmp = dat.iloc[ix[0]+2:]
+#         #print(tmp)
+#         rl = len(tmp)
+#         cycles = int(np.ceil((timespan - len(dat)) /rl)) + 1
+        
+#         for n in range(cycles):
+#             data = pd.concat([data, tmp])
+
+#     data.reset_index(inplace=True, drop=True)
+#     data = data.iloc[0:timespan]
+#     data['year'] = data.index.values
+
+#     return data
+
+
